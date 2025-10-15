@@ -14,6 +14,7 @@ export default function TrackingPage() {
     const [reference, setReference] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [carrier, setCarrier] = useState<string>('')
 
     function formatEta(input?: string) {
         if (!input) return ''
@@ -25,33 +26,16 @@ export default function TrackingPage() {
         e.preventDefault()
         setError('')
         const ref = reference.trim()
+        if (!carrier) { setError('请选择承运商'); return }
         if (!ref) { setList([]); return }
         setLoading(true)
         try {
-            // 统一聚合接口：返回仅有结果的公司
-            const res = await axios.get(`/api/tracking/query-all/${encodeURIComponent(ref)}`)
-            const data = res?.data
-            // 兼容多种返回：
-            // 1) 数组 [{ carrier, eta, description }]
-            // 2) 单对象 { carrier, eta|result, description }
-            // 3) OCR 提前返回 { status:'ok', result: 'YYYY-MM-DD', source:'ocr' }
-            if (Array.isArray(data)) {
-                const rows = data.map((x:any, idx:number) => ({
-                    id: idx+1,
-                    company: x.carrier || '-',
-                    tracking_no: ref,
-                    status: x.description || 'Vessel Arrival',
-                    eta: formatEta(x.eta)
-                }))
-                setList(rows)
-            } else if (data && typeof data === 'object') {
-                const carrier = (data as any).carrier || 'WANHAI'
-                const etaRaw = (data as any).eta ?? (data as any).result
-                const desc = (data as any).description || 'Vessel Arrival'
-                setList([{ id: 1, company: carrier, tracking_no: ref, status: desc, eta: etaRaw ? formatEta(String(etaRaw)) : undefined }])
-            } else {
-                setList([])
-            }
+            // 按选择的承运商走单通道
+            const res = await axios.post(`/api/tracking/query`, { carrier, trackingNo: ref })
+            const data = res?.data || {}
+            const etaRaw = (data as any).eta ?? (data as any).result
+            const desc = (data as any).description || 'Vessel Arrival'
+            setList([{ id: 1, company: carrier, tracking_no: ref, status: desc, eta: etaRaw ? formatEta(String(etaRaw)) : undefined }])
         } catch (err) {
             setError('查询失败，请稍后再试')
         } finally {
@@ -73,6 +57,22 @@ export default function TrackingPage() {
         <div style={{padding:24}}>
             <h2>Tracking</h2>
             <form onSubmit={onSearch} style={{display:'flex',gap:12,flexWrap:'wrap',margin:'12px 0'}}>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    <span style={{color:'#475569'}}>Carrier:</span>
+                    {['WANHAI','CMA','SHIPMENTLINK'].map(c=> (
+                        <button key={c} type="button" onClick={()=>setCarrier(c)}
+                            className="login-btn"
+                            style={{
+                                padding:'6px 10px',
+                                background: carrier===c? '#0ea5e9':'#e2e8f0',
+                                color: carrier===c? '#fff':'#334155',
+                                border:'none',
+                                borderRadius:6,
+                                cursor:'pointer'
+                            }}
+                        >{c}</button>
+                    ))}
+                </div>
                 <input placeholder="Enter tracking reference" value={reference} onChange={e=>setReference(e.target.value)} />
                 <button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
                 <button type="button" onClick={onStop} disabled={!loading}>Stop</button>

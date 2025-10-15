@@ -38,6 +38,10 @@ public class TrackingService {
         if (carrierCode != null && carrierCode.equalsIgnoreCase("WANHAI")) {
             return queryWanhaiFromOcrAndSave(trackingNo);
         }
+        // 特例：SHIPMENTLINK 走本地 Python 爬取
+        if (carrierCode != null && carrierCode.equalsIgnoreCase("SHIPMENTLINK")) {
+            return queryShipmentlinkByPythonAndSave(trackingNo);
+        }
 
         CarrierApiConfig cfg = configRepository.findByCarrierCodeAndEnabledTrue(carrierCode);
         if (cfg == null) {
@@ -132,6 +136,8 @@ public class TrackingService {
         Path detA = Paths.get("backend", "app", "debug", "wanhai_ocr_detail.txt");
         Path detB = Paths.get("app", "debug", "wanhai_ocr_detail.txt");
         log.debug("[tracking][wanhai-ocr] try read eta from {} or {}", etaA.toString(), etaB.toString());
+        // 触发 Python 抓取（后台）以生成最新 OCR 文件
+        tryRunWanhaiPythonAsync(trackingNo);
         // 阻塞轮询直到 ETA 文件出现并非空
         String eta = readFirstExistingFileBlocking(etaA, etaB);
         log.debug("[tracking][wanhai-ocr] eta read: {}", eta);
@@ -158,6 +164,42 @@ public class TrackingService {
         out.put("statusCode", 200);
         out.put("source", "ocr");
         return out;
+    }
+
+    private void tryRunWanhaiPythonAsync(String trackingNo) {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
+        try {
+            java.util.List<String> cmd = buildPythonCmd(
+                    "d:/AirSea/.venv/Scripts/python.exe",
+                    "d:/AirSea/backend/wanhai_tracking_playwright.py",
+                    "backend/wanhai_tracking_playwright.py",
+                    trackingNo
+            );
+            log.debug("[wanhai] spawn python: {}", cmd);
+            java.io.File projectRoot = new java.io.File("d:/AirSea");
+            java.io.File logFile = new java.io.File("backend/app/debug/wanhai_runner.log");
+            logFile.getParentFile().mkdirs();
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            if (projectRoot.exists()) pb.directory(projectRoot);
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(logFile);
+            pb.start(); // 异步启动，输出重定向到文件，避免缓冲区阻塞
+        } catch (Exception e) {
+            log.debug("[wanhai] spawn python failed: {}", e.getMessage());
+        }
+    }
+
+    private java.util.List<String> buildPythonCmd(String absPythonExe,
+                                                  String absScriptPath,
+                                                  String relScriptPath,
+                                                  String number) {
+        java.io.File exe = new java.io.File(absPythonExe);
+        String py = exe.exists() ? exe.getPath() : "python";
+        java.io.File absScript = new java.io.File(absScriptPath);
+        java.io.File relPrefer = new java.io.File(relScriptPath);
+        java.io.File rootPrefer = new java.io.File(relScriptPath.replace("backend/", ""));
+        String script = absScript.exists() ? absScript.getPath() : (relPrefer.exists() ? relPrefer.getPath() : rootPrefer.getPath());
+        return java.util.List.of(py, script, "--number", number);
     }
 
     private String readFirstExistingFile(Path... paths) {
@@ -194,6 +236,92 @@ public class TrackingService {
                 org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
                 log.debug("[tracking][wanhai-ocr] waiting for file... ({} ms)", tick);
             }
+        }
+    }
+
+    private Map<String, Object> queryShipmentlinkByPythonAndSave(String trackingNo) {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
+        try {
+            java.io.File prefer = new java.io.File("shipmentlink_tracking_playwright.py");
+            java.io.File fallback = new java.io.File("backend/shipmentlink_tracking_playwright.py");
+            java.io.File script = prefer.exists() ? prefer : fallback;
+            if (!script.exists()) {
+                throw new java.io.FileNotFoundException("python script not found: " + script.getAbsolutePath());
+            }
+            java.util.List<String> cmd = java.util.List.of("python", script.getPath(), "--number", trackingNo);
+            log.debug("[shipmentlink] exec: {}", cmd);
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(false);
+            Process p = pb.start();
+            String stdout = readFully(p.getInputStream());
+            String stderr = readFully(p.getErrorStream());
+            boolean finished = p.waitFor(180_000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return Map.of(
+                        "ok", false,
+                        "error", "python process timeout",
+                        "stderr", truncate(stderr)
+                );
+            }
+            int code = p.exitValue();
+            log.debug("[shipmentlink] exitCode={} stderrSnippet={}", code, truncate(stderr));
+            Map<String, Object> payload = tryParseJson(stdout);
+            String eta = null;
+            if (payload != null) {
+                Object status = payload.get("status");
+                if (status != null && "ok".equalsIgnoreCase(String.valueOf(status))) {
+                    Object res = payload.get("result");
+                    if (res != null) {
+                        eta = String.valueOf(res).replace('/', '-');
+                    }
+                }
+            }
+            TrackRecord rec = new TrackRecord();
+            rec.setCarrierCode("SHIPMENTLINK");
+            rec.setTrackingNo(trackingNo);
+            rec.setEta(eta);
+            rec.setDescription("Vessel Arrival");
+            recordRepository.save(rec);
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", eta != null);
+            out.put("eta", eta);
+            out.put("savedId", rec.getId());
+            out.put("raw", truncate(stdout));
+            out.put("statusCode", code);
+            out.put("source", "python");
+            return out;
+        } catch (Exception e) {
+            return Map.of("ok", false, "error", e.getMessage());
+        }
+    }
+
+    private String readFully(java.io.InputStream in) throws java.io.IOException {
+        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+            return sb.toString();
+        }
+    }
+
+    private String truncate(String s) {
+        if (s == null) return null;
+        return s.length() > 400 ? s.substring(0, 400) : s;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> tryParseJson(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.findAndRegisterModules();
+            return om.readValue(s, java.util.LinkedHashMap.class);
+        } catch (Exception ignore) {
+            return null;
         }
     }
 

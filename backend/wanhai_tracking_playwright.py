@@ -968,15 +968,10 @@ def scrape(config: dict) -> dict:
 
                         # ---- 通过 tracking_query.xhtml 表单提交打开详情（避免WAF/JSF校验）----
             
-            # 在最终页面等待结果并提取（轮询，兼容 JSF 局部更新 / frames / XHTML 命名空间）
+            # 在最终页面等待结果并提取（按需：出现该日志后等待 2 秒即可退出）
             log("waiting result on final page ...")
-            # 截取所有页面前，等待页面稳定，避免加载态
             try:
-                for pg in context.pages:
-                    try:
-                        wait_page_stable(pg, max_wait_sec=10)
-                    except Exception:
-                        pass
+                time.sleep(2)
             except Exception:
                 pass
             # 截取所有页面，并对以 __3 结尾的那张做 OCR 提取文字
@@ -1032,13 +1027,31 @@ def scrape(config: dict) -> dict:
                         with open(os.path.join(debug_dir, "wanhai_ocr_eta.txt"), "w", encoding="utf-8") as f:
                             f.write(eta_norm)
                     else:
-                        out_obj_early = {"status": "ok", "number": str(search_number), "ocr": True, "result": "", "source": "ocr"}
+                        # 无法从 OCR 提取 ETA：也要生成占位文件，eta 写入 'null'
+                        with open(os.path.join(debug_dir, "wanhai_ocr_eta.txt"), "w", encoding="utf-8") as f:
+                            f.write("null")
+                        out_obj_early = {"status": "ok", "number": str(search_number), "ocr": True, "result": None, "source": "ocr"}
                 except Exception as e:
                     log(f"OCR failed: {e}")
-                    out_obj_early = {"status": "ok", "number": str(search_number), "ocr_error": str(e)}
-
-            if out_obj_early is None:
-                out_obj_early = {"status": "ok", "number": str(search_number), "note": "screenshot saved, no ocr"}
+                    # OCR 失败也需落地占位文件
+                    try:
+                        with open(os.path.join(debug_dir, "wanhai_ocr_detail.txt"), "w", encoding="utf-8") as f:
+                            f.write(ocr_text or "")
+                        with open(os.path.join(debug_dir, "wanhai_ocr_eta.txt"), "w", encoding="utf-8") as f:
+                            f.write("null")
+                    except Exception:
+                        pass
+                    out_obj_early = {"status": "ok", "number": str(search_number), "ocr_error": str(e), "result": None}
+            else:
+                # 没有可用的截图：也要输出占位 OCR 文件与 null 结果
+                try:
+                    with open(os.path.join(debug_dir, "wanhai_ocr_detail.txt"), "w", encoding="utf-8") as f:
+                        f.write("")
+                    with open(os.path.join(debug_dir, "wanhai_ocr_eta.txt"), "w", encoding="utf-8") as f:
+                        f.write("null")
+                except Exception:
+                    pass
+                out_obj_early = {"status": "ok", "number": str(search_number), "note": "no screenshot", "result": None, "source": "ocr"}
             # 打印并保存结果，然后立刻返回，避免继续等待
             try:
                 print(json.dumps(out_obj_early, ensure_ascii=False), flush=True)
