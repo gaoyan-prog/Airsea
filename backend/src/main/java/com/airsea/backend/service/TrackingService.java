@@ -127,14 +127,17 @@ public class TrackingService {
 
     private Map<String, Object> queryWanhaiFromOcrAndSave(String trackingNo) {
         org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
-        String eta = readFirstExistingFile(
-                Paths.get("backend", "app", "debug", "wanhai_ocr_eta.txt"),
-                Paths.get("app", "debug", "wanhai_ocr_eta.txt")
-        );
-        String rawDetail = readFirstExistingFile(
-                Paths.get("backend", "app", "debug", "wanhai_ocr_detail.txt"),
-                Paths.get("app", "debug", "wanhai_ocr_detail.txt")
-        );
+        Path etaA = Paths.get("backend", "app", "debug", "wanhai_ocr_eta.txt");
+        Path etaB = Paths.get("app", "debug", "wanhai_ocr_eta.txt");
+        Path detA = Paths.get("backend", "app", "debug", "wanhai_ocr_detail.txt");
+        Path detB = Paths.get("app", "debug", "wanhai_ocr_detail.txt");
+        log.debug("[tracking][wanhai-ocr] try read eta from {} or {}", etaA.toString(), etaB.toString());
+        // 阻塞轮询直到 ETA 文件出现并非空
+        String eta = readFirstExistingFileBlocking(etaA, etaB);
+        log.debug("[tracking][wanhai-ocr] eta read: {}", eta);
+        // 明细可选：等待一小段时间读取，不强制阻塞
+        String rawDetail = readFirstExistingFileWithWait(15000L, detA, detB);
+        log.debug("[tracking][wanhai-ocr] detail length: {}", rawDetail == null ? 0 : rawDetail.length());
         if (eta != null) eta = eta.trim();
         if (rawDetail != null) rawDetail = rawDetail.trim();
         log.debug("[tracking][wanhai-ocr] eta='{}' len(detail)={} ", eta, rawDetail == null ? 0 : rawDetail.length());
@@ -168,8 +171,46 @@ public class TrackingService {
         return null;
     }
 
+    private String readFirstExistingFileWithWait(long maxWaitMs, Path... paths) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, maxWaitMs);
+        while (true) {
+            String s = readFirstExistingFile(paths);
+            if (s != null && !s.trim().isEmpty()) return s;
+            if (System.currentTimeMillis() >= deadline) return s; // may be null/empty
+            try { Thread.sleep(400L); } catch (InterruptedException ignore) { break; }
+        }
+        return readFirstExistingFile(paths);
+    }
+
+    private String readFirstExistingFileBlocking(Path... paths) {
+        long tick = 0L;
+        while (true) {
+            String s = readFirstExistingFile(paths);
+            if (s != null && !s.trim().isEmpty()) return s;
+            if (Thread.currentThread().isInterrupted()) return s; // 被取消时返回已读到的内容
+            try { Thread.sleep(500L); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return s; }
+            tick += 500L;
+            if (tick % 5000L == 0L) {
+                org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
+                log.debug("[tracking][wanhai-ocr] waiting for file... ({} ms)", tick);
+            }
+        }
+    }
+
     public List<Map<String, Object>> queryAllProvidersAndSave(String trackingNo) {
         List<Map<String, Object>> results = new ArrayList<>();
+        // 先尝试从 WANHAI 的 OCR 文件直接取值（不依赖 providers 配置）
+        try {
+            Map<String, Object> rWan = queryWanhaiFromOcrAndSave(trackingNo);
+            String etaWan = rWan.get("eta") == null ? null : String.valueOf(rWan.get("eta"));
+            if (etaWan != null && !etaWan.isBlank()) {
+                results.add(Map.of(
+                        "carrier", "WANHAI",
+                        "eta", etaWan,
+                        "description", "Vessel Arrival"
+                ));
+            }
+        } catch (Exception ignore) {}
         List<TrackingProvidersProperties.Provider> providers = providersProperties.getProviders();
         if (providers == null) return results;
         for (var p : providers) {
