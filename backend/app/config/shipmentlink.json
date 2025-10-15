@@ -1,0 +1,14 @@
+{
+  "search_url": "https://ct.shipmentlink.com/servlet/TDB1_CargoTracking.do",
+  "search_button_choose_xpath": "/html/body/div[6]/center/table[2]/tbody/tr/td/form/div/div[2]/table/tbody/tr[1]/td/table/tbody/tr[1]/td[1]/table/tbody/tr/td[2]/div[3]/input",
+  "search_input_xpath": "/html/body/div[6]/center/table[2]/tbody/tr/td/form/div/div[2]/table/tbody/tr[1]/td/table/tbody/tr[1]/td[2]/table/tbody/tr/td/div[1]/input",
+  "search_button_xpath": "/html/body/div[6]/center/table[2]/tbody/tr/td/form/div/div[2]/table/tbody/tr[1]/td/table/tbody/tr[1]/td[2]/table/tbody/tr/td/div[2]/input",
+  "result_xpath": "/html/body/div[7]/center/table[3]/tbody/tr/td/table[2]/tbody/tr[5]/td[2]",
+  "search_number": "003501147981",
+  "headless": false,
+  "manual_verify": false,
+  "user_data_dir": "D:/AirSea/backend/app/userdata",
+  "cookie_consent_xpath": "/html/body/div[8]/div/div/div[3]/button[1]"
+}
+
+

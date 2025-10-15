@@ -1,0 +1,63 @@
+server:
+  port: 8000
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: always
+    include-exception: true
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:airsea}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    open-in-view: false
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    org.hibernate: WARN
+    com.zaxxer.hikari: WARN
+    com.airsea.backend: DEBUG
+
+app:
+  gas:
+    url: ${GAS_URL:https://script.google.com/macros/s/AKfycbyJTMNsBJXhIk1jKJVHujFmDVUm7RPLzHffaFOMQf7H68Q9bcgzJ9LJy_MKYN9CE2-P/exec}
+
+  tracking:
+    providers:
+      # 示例：CMA（你提到的公司名），按需调整 carrierCode
+      - carrierCode: CMA
+        displayName: CMA CGM
+        method: GET
+        baseUrl: "https://apis.cma-cgm.net/operation/trackandtrace/v1"
+        urlTemplate: "/events/{trackingNo}?limit=100"
+        headers:
+          accept: application/json
+          keyId: "{apiKey}"
+        parser: EVER_EVENTS
+        enabled: true
+        apiKey: amS4eq0lb0S7jt4BTgQxSal2zgKgtAht
+
+      # 其他公司可继续在此增加
+      # - carrierCode: EVER
+      #   displayName: Evergreen
+      #   method: GET
+      #   urlTemplate: "/evergreen/api/.../{trackingNo}/{apiKey}"
+      #   headers: { accept: "application/json" }
+      #   parser: EVER_EVENTS
+      #   enabled: true
+      #   apiKey: ${EVER_API_KEY:}
+
+

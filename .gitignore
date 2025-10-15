@@ -1,0 +1,82 @@
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.history
+
+# Node / Frontend
+node_modules/
+**/node_modules/
+frontend/dist/
+dist/
+.vite/
+frontend/.vite/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn/cache/
+.yarn/releases/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.eslintcache
+
+# Java / Maven
+backend/target/
+**/target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Python
+.venv/
+venv/
+env/
+ENV/
+**/__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.ipynb_checkpoints/
+
+# Playwright / Test artifacts
+**/playwright-report/
+**/test-results/
+**/trace.zip
+
+# App data and debug artifacts
+app/userdata_zim/
+app/debug/
+backend/app/userdata/
+backend/app/debug/
+backend/debug/
+
+# Logs and coverage
+*.log
+logs/
+coverage/
+.coverage
+coverage.xml
+htmlcov/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Misc caches / temps
+.cache/
+tmp/
+temp/
+

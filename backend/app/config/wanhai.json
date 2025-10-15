@@ -1,0 +1,14 @@
+{
+  "search_url": "https://www.wanhai.com/views/cargo_track_v2/tracking_query.xhtml",
+  "search_input_xpath": "/html/body/div[2]/div[3]/div[3]/div/div/form/table[1]/tbody/tr[2]/td[2]/input[1]",
+  "search_button_xpath": "/html/body/div[2]/div[3]/div[3]/div/div/form/table[2]/tbody/tr/td[2]/input",
+  "more_details_button_xpath": "/html/body/div[2]/div[1]/div/form/table/tbody/tr[2]/td[6]/u[2]/a",
+  "result_xpath": "/html/body/div[2]/div[1]/div/form/table[4]/tbody/tr[3]/td[2]",
+  "list_bl_data_xpath": "//a[contains(normalize-space(.),'B/L Data')]",
+  "search_number": "026F537809",
+  "headless": false,
+  "manual_verify": true,
+  "user_data_dir": "D:/AirSea/backend/app/userdata"
+}
+
+

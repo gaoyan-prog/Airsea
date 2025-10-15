@@ -1,0 +1,44 @@
+:root{--blue:#1f2a5a;--light:#f5f5f5;--text:#0f172a}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--text)}
+.topbar{position:sticky;top:0;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #eee;z-index:10}
+.topbar .brand{font-weight:800;font-size:24px;color:#1c3faa;text-decoration:none}
+.topbar .brand .sub{font-weight:500;font-size:14px;margin-left:6px;color:#475569}
+.topbar .nav{list-style:none;margin:0;padding:0;display:flex;gap:24px}
+.topbar .nav a{color:#1c3faa;text-decoration:none;font-weight:600}
+.topbar .nav a:hover{color:#c81e1e}
+.topbar .nav a.active{color:#c81e1e}
+.topbar .right{display:flex;align-items:center}
+.login-btn{padding:8px 14px;border:1px solid #1c3faa;border-radius:6px;color:#1c3faa;text-decoration:none;font-weight:700}
+/* dropdown */
+.dropdown{position:relative}
+.dropdown .menu{position:absolute;left:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px 0;min-width:260px;display:none}
+.dropdown:hover .menu{display:block}
+.dropdown .menu li{list-style:none}
+.dropdown .menu a{display:block;padding:10px 14px;color:#111827;text-decoration:none}
+.dropdown .menu a:hover{background:#f3f4f6;color:#c81e1e}
+/* sections */
+.hero{background:var(--blue);color:white;padding:80px 24px;text-align:center}
+.hero h1{margin:0 0 12px 0;letter-spacing:2px}
+.services{background:#e5e7eb;padding:60px 24px;text-align:center}
+.services .svc{max-width:860px;margin:0 auto;padding:32px 0;border-bottom:1px solid #d1d5db;text-align:center}
+.services .svc h3{color:#1f2a5a;margin:0 0 8px 0}
+.services .btn{display:inline-block;margin-top:14px;background:#c81e1e;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:700}
+.login-wrap{max-width:420px;margin:48px auto;padding:24px;border:1px solid #eee;border-radius:10px;background:#fff}
+.login-form{display:flex;flex-direction:column;gap:14px}
+.login-form input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px}
+.login-form button{padding:10px 14px;background:#1c3faa;color:white;border:none;border-radius:8px;cursor:pointer}
+.msg{margin-top:12px}
+/* loading */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #d1d5db;border-top-color:#1c3faa;border-radius:50%;margin-left:8px;animation:spin 1s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress{position:relative;height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;max-width:360px}
+.progress .bar{height:100%;background:#1c3faa;width:0;transition:width .3s ease}
+.tip{margin-top:8px;color:#64748b}
+/* service detail pages */
+.service-hero{background:var(--blue);padding:48px 16px 32px}
+.service-title{max-width:980px;margin:0 auto;background:#fff;color:#1f2a5a;padding:24px 28px;font-size:42px;font-weight:800;line-height:1.2;border:1px solid #e5e7eb;box-shadow:0 10px 0 0 #fff, 0 14px 0 0 rgba(0,0,0,.04)}
+.service-section{background:#f6f7f9;padding:32px 16px 64px}
+.service-content{max-width:980px;margin:0 auto;color:#1f2937;font-size:16px;line-height:1.9}
+.service-content .accent{width:84px;height:4px;background:var(--blue);margin:18px 0;border-radius:2px}
+.service-content h3{margin-top:28px;color:#1f2a5a}
