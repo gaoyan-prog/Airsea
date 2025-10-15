@@ -25,3 +25,5 @@ npm run dev
 浏览器访问 http://localhost:5173 ，导航栏右侧有 Login，输入 email 与密码进行登录。
 
 可选环境变量：`DB_HOST` `DB_PORT` `DB_USERNAME` `DB_PASSWORD` `DB_NAME`。
+
+登录密码 email:airsea@airsea.us   密码:123456 
