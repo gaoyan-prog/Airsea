@@ -31,7 +31,10 @@ export default function TrackingPage() {
             // 统一聚合接口：返回仅有结果的公司
             const res = await axios.get(`/api/tracking/query-all/${encodeURIComponent(ref)}`)
             const data = res?.data
-            // 为了兼容旧表格结构，将聚合结果映射为简单展示（company=carrier, tracking_no=ref）
+            // 兼容多种返回：
+            // 1) 数组 [{ carrier, eta, description }]
+            // 2) 单对象 { carrier, eta|result, description }
+            // 3) OCR 提前返回 { status:'ok', result: 'YYYY-MM-DD', source:'ocr' }
             if (Array.isArray(data)) {
                 const rows = data.map((x:any, idx:number) => ({
                     id: idx+1,
@@ -41,6 +44,11 @@ export default function TrackingPage() {
                     eta: formatEta(x.eta)
                 }))
                 setList(rows)
+            } else if (data && typeof data === 'object') {
+                const carrier = (data as any).carrier || 'WANHAI'
+                const etaRaw = (data as any).eta ?? (data as any).result
+                const desc = (data as any).description || 'Vessel Arrival'
+                setList([{ id: 1, company: carrier, tracking_no: ref, status: desc, eta: etaRaw ? formatEta(String(etaRaw)) : undefined }])
             } else {
                 setList([])
             }

@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -31,6 +34,11 @@ public class TrackingService {
     }
 
     public Map<String, Object> queryAndSave(String carrierCode, String trackingNo, String apiKey, Map<String, Object> extra) {
+        // 特例：WANHAI 走本地 OCR 结果，而不是调用外部 API
+        if (carrierCode != null && carrierCode.equalsIgnoreCase("WANHAI")) {
+            return queryWanhaiFromOcrAndSave(trackingNo);
+        }
+
         CarrierApiConfig cfg = configRepository.findByCarrierCodeAndEnabledTrue(carrierCode);
         if (cfg == null) {
             // 若数据库未配置，则尝试从 application.yml 的 providers 中读取一次性配置
@@ -115,6 +123,49 @@ public class TrackingService {
         out.put("url", url);
         out.put("statusCode", statusCode);
         return out;
+    }
+
+    private Map<String, Object> queryWanhaiFromOcrAndSave(String trackingNo) {
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TrackingService.class);
+        String eta = readFirstExistingFile(
+                Paths.get("backend", "app", "debug", "wanhai_ocr_eta.txt"),
+                Paths.get("app", "debug", "wanhai_ocr_eta.txt")
+        );
+        String rawDetail = readFirstExistingFile(
+                Paths.get("backend", "app", "debug", "wanhai_ocr_detail.txt"),
+                Paths.get("app", "debug", "wanhai_ocr_detail.txt")
+        );
+        if (eta != null) eta = eta.trim();
+        if (rawDetail != null) rawDetail = rawDetail.trim();
+        log.debug("[tracking][wanhai-ocr] eta='{}' len(detail)={} ", eta, rawDetail == null ? 0 : rawDetail.length());
+
+        TrackRecord rec = new TrackRecord();
+        rec.setCarrierCode("WANHAI");
+        rec.setTrackingNo(trackingNo);
+        rec.setEta(eta);
+        rec.setDescription("Vessel Arrival");
+        recordRepository.save(rec);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("eta", eta);
+        out.put("savedId", rec.getId());
+        out.put("raw", rawDetail);
+        out.put("url", "ocr:wanhai_ocr_eta.txt");
+        out.put("statusCode", 200);
+        out.put("source", "ocr");
+        return out;
+    }
+
+    private String readFirstExistingFile(Path... paths) {
+        for (Path p : paths) {
+            try {
+                if (Files.exists(p)) {
+                    return Files.readString(p);
+                }
+            } catch (Exception ignore) {}
+        }
+        return null;
     }
 
     public List<Map<String, Object>> queryAllProvidersAndSave(String trackingNo) {
