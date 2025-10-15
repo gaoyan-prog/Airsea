@@ -194,6 +194,56 @@ def scrape(config: dict) -> dict:
             log("tracing started")
         except Exception as e:
             log(f"tracing start failed: {e}")
+        
+        # 等待页面从加载态恢复为稳定态的工具（解决截图时仍在转圈的问题）
+        def _is_loader_visible(pg) -> bool:
+            try:
+                res = pg.evaluate(
+                    """
+                    () => {
+                        const visible = el => el && !!(el.offsetParent);
+                        const sels = [
+                          '.ui-widget-overlay', '.ui-blockui', '.ui-blockui-content', '.blockUI',
+                          '.loading', '.spinner', '.fa-spinner', 'img[src*="loading"]'
+                        ];
+                        for (const s of sels) {
+                          const el = document.querySelector(s);
+                          if (visible(el)) return true;
+                        }
+                        return false;
+                    }
+                    """
+                )
+                return bool(res)
+            except Exception:
+                return False
+
+        def wait_page_stable(pg, max_wait_sec: int = 12):
+            deadline = time.time() + max_wait_sec
+            last_len = -1
+            stable_hits = 0
+            while time.time() < deadline:
+                try:
+                    pg.wait_for_load_state('domcontentloaded', timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    pg.wait_for_load_state('networkidle', timeout=1200)
+                except Exception:
+                    pass
+                try:
+                    cur_len = pg.evaluate("() => (document.body && document.body.innerText || '').length")
+                except Exception:
+                    cur_len = -1
+                has_loader = _is_loader_visible(pg)
+                if not has_loader and cur_len == last_len and cur_len > 0:
+                    stable_hits += 1
+                    if stable_hits >= 2:
+                        break
+                else:
+                    stable_hits = 0
+                last_len = cur_len
+                time.sleep(0.4)
         try:
             context.set_default_timeout(15000)
             page = context.new_page()
@@ -920,6 +970,15 @@ def scrape(config: dict) -> dict:
             
             # 在最终页面等待结果并提取（轮询，兼容 JSF 局部更新 / frames / XHTML 命名空间）
             log("waiting result on final page ...")
+            # 截取所有页面前，等待页面稳定，避免加载态
+            try:
+                for pg in context.pages:
+                    try:
+                        wait_page_stable(pg, max_wait_sec=10)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # 截取所有页面，并对以 __3 结尾的那张做 OCR 提取文字
             taken = []
             try:
@@ -942,19 +1001,54 @@ def scrape(config: dict) -> dict:
                     break
             if target_path is None and taken:
                 target_path = taken[-1][1]
-            # OCR 提取
+            # OCR 提取并立即结束（不再继续等待/轮询）
+            out_obj_early = None
+            ocr_text = None
             if target_path:
                 try:
                     import pytesseract
                     from PIL import Image
                     img = Image.open(target_path)
-                    text = pytesseract.image_to_string(img, lang="eng")
+                    # 若系统已安装中文语言包，可改为 eng+chi_sim
+                    ocr_text = pytesseract.image_to_string(img, lang="eng")
                     txt_path = os.path.join(debug_dir, "wanhai_ocr_detail.txt")
                     with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(text)
+                        f.write(ocr_text)
                     log(f"OCR extracted to: {txt_path}")
+                    # 简单正则从 OCR 中提取 ETA 日期并规范化
+                    eta_raw = None
+                    try:
+                        m = re.search(r"ESTIMATED\s*ARRIVAL\s*DATE[^\n\r]*?(\d{4}[\/-]\d{1,2}[\/-]\d{1,2}|[A-Z]{3}[\-\s]\d{1,2}[\-\s]\d{4}|\d{1,2}[\-\s][A-Z]{3}[\-\s]\d{4})", ocr_text, flags=re.I)
+                        if not m:
+                            m = re.search(r"ETA[^\n\r]*?(\d{4}[\/-]\d{1,2}[\/-]\d{1,2}|[A-Z]{3}[\-\s]\d{1,2}[\-\s]\d{4}|\d{1,2}[\-\s][A-Z]{3}[\-\s]\d{4})", ocr_text, flags=re.I)
+                        if m:
+                            eta_raw = m.group(1)
+                    except Exception:
+                        eta_raw = None
+                    if eta_raw:
+                        eta_norm = normalize_date_text(eta_raw)
+                        out_obj_early = {"status": "ok", "number": str(search_number), "result": eta_norm, "source": "ocr"}
+                        # 也写入文件便于核对
+                        with open(os.path.join(debug_dir, "wanhai_ocr_eta.txt"), "w", encoding="utf-8") as f:
+                            f.write(eta_norm)
+                    else:
+                        out_obj_early = {"status": "ok", "number": str(search_number), "ocr": True, "result": "", "source": "ocr"}
                 except Exception as e:
                     log(f"OCR failed: {e}")
+                    out_obj_early = {"status": "ok", "number": str(search_number), "ocr_error": str(e)}
+
+            if out_obj_early is None:
+                out_obj_early = {"status": "ok", "number": str(search_number), "note": "screenshot saved, no ocr"}
+            # 打印并保存结果，然后立刻返回，避免继续等待
+            try:
+                print(json.dumps(out_obj_early, ensure_ascii=False), flush=True)
+                out_file = os.path.join(debug_dir, "wanhai_result.json")
+                with open(out_file, "w", encoding="utf-8") as f:
+                    json.dump({"timestamp": datetime.now().isoformat(), **out_obj_early}, f, ensure_ascii=False, indent=2)
+                log(f"written early result: {out_file}")
+            except Exception:
+                pass
+            return out_obj_early
                         # 在最终页面等待结果并提取（轮询，兼容 JSF 局部更新 / frames / XHTML 命名空间）
            
 
