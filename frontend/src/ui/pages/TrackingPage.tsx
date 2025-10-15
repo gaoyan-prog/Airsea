@@ -29,7 +29,7 @@ export default function TrackingPage() {
         setLoading(true)
         try {
             // 统一聚合接口：返回仅有结果的公司
-            const res = await axios.get(`/tracking/query-all/${encodeURIComponent(ref)}`)
+            const res = await axios.get(`/api/tracking/query-all/${encodeURIComponent(ref)}`)
             const data = res?.data
             // 为了兼容旧表格结构，将聚合结果映射为简单展示（company=carrier, tracking_no=ref）
             if (Array.isArray(data)) {
@@ -53,7 +53,7 @@ export default function TrackingPage() {
 
     async function onStop() {
         try {
-            await axios.post('/tracking/query-all/cancel')
+            await axios.post('/api/tracking/query-all/cancel')
         } catch (e) {
             // ignore network errors for cancel
         } finally {

@@ -94,7 +94,7 @@ export default function OneClickImportPage() {
         } catch {}
         if (!jobId) {
             // 询问后端活跃任务
-            fetch('/import/active').then(r=>r.json()).then(data=>{
+            fetch('/api/import/active').then(r=>r.json()).then(data=>{
                 if (data?.ok && typeof data.jobId === 'number') {
                     setJobId(data.jobId)
                     setRunning(true)
@@ -118,7 +118,7 @@ export default function OneClickImportPage() {
         startTimers()
         saveState({ running: true, percent: 0, tipIdx: 0, msg: 'Starting...', startedAt: Date.now() })
         try {
-            const res = await fetch('/import/start', { method: 'POST' })
+            const res = await fetch('/api/import/start', { method: 'POST' })
             const data = await res.json()
             if (data && typeof data.jobId === 'number') {
                 setJobId(data.jobId)
@@ -142,7 +142,7 @@ export default function OneClickImportPage() {
             // 取消前一次请求，避免堆积
             if (abortRef.current) abortRef.current.abort()
             abortRef.current = new AbortController()
-            const res = await fetch(`/import/status/${curJobId}` , { signal: abortRef.current.signal })
+            const res = await fetch(`/api/import/status/${curJobId}` , { signal: abortRef.current.signal })
             const json = await res.json()
             const s = json?.data || {}
             setServerData(s)

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
 export default function LoginPage() {
@@ -6,6 +7,7 @@ export default function LoginPage() {
 	const [password, setPassword] = useState('')
 	const [message, setMessage] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
+	const navigate = useNavigate()
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault()
@@ -15,9 +17,9 @@ export default function LoginPage() {
 			const isEmail = username.includes('@')
 			const body: any = { password }
 			if (isEmail) body.email = username; else body.username = username
-			const res = await axios.post('/auth/login', body)
+			const res = await axios.post('/api/auth/login', body)
 			localStorage.setItem('airsea_user', JSON.stringify(res.data))
-			window.location.href = '/tracking'
+			navigate('/tracking')
 		} catch (err: any) {
 			setMessage(err?.response?.data?.detail || '登录失败')
 		} finally {

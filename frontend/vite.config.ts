@@ -6,37 +6,10 @@ export default defineConfig({
 	server: {
 		port: 5173,
 		proxy: {
-			"/auth": {
+			"/api": {
 				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/health": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/shipments": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/import": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/track": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/tracking": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/import/status/{jobId}": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
-			},
-			"/import/active": {
-				target: "http://127.0.0.1:8000",
-				changeOrigin: true
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api/, '')
 			}
 		}
 	}
