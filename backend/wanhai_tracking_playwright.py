@@ -139,6 +139,29 @@ def scrape(config: dict) -> dict:
     debug_dir = os.path.join(os.path.dirname(__file__), "app", "debug")
     ensure_dir(debug_dir)
 
+    # 仅保留 after_open_detail 的多页面截图
+    only_detail_snaps = True
+
+    # 通用截图工具：为每一步保存带序号和编号的截图
+    screenshot_seq = 0
+    def _san_label(s: str) -> str:
+        try:
+            return re.sub(r"[^a-zA-Z0-9._-]+", "_", str(s))[:80]
+        except Exception:
+            return "snap"
+    def snap(page, label: str):
+        nonlocal screenshot_seq
+        if only_detail_snaps and not str(label).startswith("all_after_open_detail__"):
+            return None
+        try:
+            screenshot_seq += 1
+            fname = f"wanhai_{str(search_number)}_{screenshot_seq:03d}_{_san_label(label)}.png"
+            out_path = os.path.join(debug_dir, fname)
+            page.screenshot(path=out_path, full_page=True)
+            return out_path
+        except Exception:
+            return None
+
     log(f"launch chromium persistent context, headless={headless}, user_data_dir={session_dir}")
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
@@ -147,6 +170,25 @@ def scrape(config: dict) -> dict:
             viewport={"width": 1280, "height": 900},
             record_har_path=os.path.join(debug_dir, "wanhai.har")
         )
+        # 截取当前上下文内所有已打开页面的工具
+        def snap_all_pages(label: str) -> None:
+            try:
+                for idx, pg in enumerate(context.pages):
+                    try:
+                        url_ok = getattr(pg, "url", None)
+                        if url_ok and url_ok != "about:blank":
+                            snap(pg, f"all_{label}__{idx}")
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        # 监听新页面出现，自动截图（禁用，避免产生非 after_open_detail 的截图）
+        try:
+            def _on_new_page(pg):
+                return
+            context.on("page", _on_new_page)
+        except Exception:
+            pass
         try:
             context.tracing.start(screenshots=True, snapshots=True, sources=True)
             log("tracing started")
@@ -173,19 +215,15 @@ def scrape(config: dict) -> dict:
                 return (time.time() - start_ts) > limit
             log(f"goto: {search_url}")
             page.goto(search_url, wait_until="domcontentloaded")
-            try:
-                page.screenshot(path=os.path.join(debug_dir, "wanhai_after_goto.png"))
-            except Exception:
-                pass
+            # 禁用早期截图：wanhai_after_goto.png
+            snap(page, "after_goto")
 
             # 等待与输入
             page.locator(f"xpath={search_input_xpath}").wait_for(timeout=15000)
             page.locator(f"xpath={search_input_xpath}").fill(str(search_number))
             log(f"filled search number: {search_number}")
-            try:
-                page.screenshot(path=os.path.join(debug_dir, "wanhai_after_fill.png"))
-            except Exception:
-                pass
+            # 禁用早期截图：wanhai_after_fill.png
+            snap(page, "after_fill")
 
             # 点击前记录页面信息
             try:
@@ -211,6 +249,7 @@ def scrape(config: dict) -> dict:
                 new_page.wait_for_load_state("domcontentloaded", timeout=30000)
                 clicked_search_ok = True
                 log("new page opened after search click")
+                snap(new_page, "popup_after_search")
             except Exception as e:
                 log(f"no new page after search click: {e}")
                 # 退回本页导航
@@ -219,19 +258,19 @@ def scrape(config: dict) -> dict:
                         search_btn.click()
                     clicked_search_ok = True
                     log("navigated on same page after search click")
+                    snap(page, "after_search_nav")
                 except Exception as e2:
                     log(f"no navigation after search click, fallback no_wait_after: {e2}")
                     try:
                         search_btn.click(no_wait_after=True)
                         page.wait_for_load_state("domcontentloaded", timeout=15000)
                         clicked_search_ok = True
+                        snap(page, "after_search_nowait")
                     except Exception as e3:
                         log(f"search click failed: {e3}")
             current_page = new_page or page
-            try:
-                (new_page or page).screenshot(path=os.path.join(debug_dir, "wanhai_after_search_click.png"))
-            except Exception:
-                pass
+            # 禁用早期截图：wanhai_after_search_click.png
+            snap_all_pages("after_search_click")
 
             # 点击后记录页面信息
             try:
@@ -286,6 +325,7 @@ def scrape(config: dict) -> dict:
                                 clicked_more_ok = True
                                 link_clicked = True
                                 log("opened popup after detail link click")
+                                snap(final_page, "popup_after_detail")
                             except Exception as e_pop:
                                 log(f"no popup on detail link: {e_pop}")
                                 if not link_clicked:
@@ -299,6 +339,7 @@ def scrape(config: dict) -> dict:
                                         clicked_more_ok = True
                                         link_clicked = True
                                         log("navigated on same page after detail link click")
+                                        snap(current_page, "after_detail_nav")
                                     except Exception as e_nav:
                                         log(f"no navigation after detail link: {e_nav}")
                             if not link_clicked:
@@ -309,6 +350,7 @@ def scrape(config: dict) -> dict:
                                         clicked_more_ok = True
                                         link_clicked = True
                                         log(f"goto href after detail link: {href}")
+                                        snap(current_page, "after_detail_goto")
                                 except Exception as e_goto:
                                     log(f"goto href failed: {e_goto}")
                             break
@@ -335,6 +377,7 @@ def scrape(config: dict) -> dict:
                         final_page.wait_for_load_state("domcontentloaded", timeout=30000)
                         clicked_more_ok = True
                         log("opened popup after more-details click")
+                        snap(final_page, "popup_after_more_details")
                     except Exception as e:
                         log(f"no popup after more-details click: {e}")
                         try:
@@ -346,6 +389,7 @@ def scrape(config: dict) -> dict:
                                 el2.click()
                             clicked_more_ok = True
                             log("navigated on same page after more-details click")
+                            snap(current_page, "after_more_details_nav")
                         except Exception as e2:
                             log(f"no navigation after more-details, try goto href: {e2}")
                             try:
@@ -354,6 +398,7 @@ def scrape(config: dict) -> dict:
                                     current_page.goto(href2, wait_until="domcontentloaded")
                                     clicked_more_ok = True
                                     log(f"goto href after more-details: {href2}")
+                                    snap(current_page, "after_more_details_goto")
                             except Exception as e3:
                                 log(f"goto href failed: {e3}")
                 except Exception as e:
@@ -375,7 +420,9 @@ def scrape(config: dict) -> dict:
             # 如果新开了页，切换；否则沿用当前页
             try:
                 candidate = next((pg for pg in context.pages if pg is not current_page and pg.url != "about:blank"), None)
-                if candidate: final_page = candidate
+                if candidate:
+                    final_page = candidate
+                    snap(candidate, "candidate_selected")
             except Exception:
                 pass
             last_page = final_page or current_page
@@ -383,6 +430,7 @@ def scrape(config: dict) -> dict:
                 last_page.wait_for_load_state("domcontentloaded", timeout=15000)
             except Exception:
                 pass
+            snap(last_page, "after_last_page_ready")
             # 如果当前是列表页（tracking_data_list），继续点击 "B/L Data" 进入详情页
             # 如果当前是列表页（tracking_data_list），继续点击 "B/L Data" 进入详情页
             # ========= PATCH: 强化版 - 打开 B/L Data 详情页 =========
@@ -466,6 +514,7 @@ def scrape(config: dict) -> dict:
                             log(f"force goto detail page: {forced_url}")
                             last_page.goto(forced_url, wait_until="domcontentloaded", timeout=20000)
                             log("force goto success (detail page in same tab)")
+                            snap(last_page, "after_force_redirect")
 
                             # ⚠️ 第二层：直接跳真正的结果页（绕过redirect）
                             real_detail_url = (
@@ -475,15 +524,13 @@ def scrape(config: dict) -> dict:
                             log(f"manual goto REAL detail page: {real_detail_url}")
                             last_page.goto(real_detail_url, wait_until="domcontentloaded", timeout=25000)
                             log("navigated to REAL detail page successfully")
+                            snap(last_page, "after_force_real_detail")
 
                         except Exception as e:
                             log(f"force goto REAL detail page failed: {e}")
 
                     # Step 5️⃣: 调试截图
-                    try:
-                        last_page.screenshot(path=os.path.join(debug_dir, "wanhai_after_open_detail.png"))
-                    except Exception:
-                        pass
+                    # 保留 after_open_detail 的多页面快照，由 snap_all_pages 统一生成
 
             except Exception as e:
                 log(f"list B/L open section failed: {e}")
@@ -491,10 +538,7 @@ def scrape(config: dict) -> dict:
 
 
             # 不再依赖 URL 变化；Wan Hai 常为 JSF 同页局部更新
-            try:
-                last_page.screenshot(path=os.path.join(debug_dir, "wanhai_after_more_details.png"))
-            except Exception:
-                pass
+            # 禁用早期截图：wanhai_after_more_details.png
 
             try:
                 last_title = last_page.title()
@@ -550,6 +594,7 @@ def scrape(config: dict) -> dict:
                                 found_detail = ppop.value
                                 clicked = True
                                 log("clicked list B/L via fallback xpath -> popup appeared")
+                                snap(found_detail, "detail_popup_v2")
                         except Exception as e:
                             log(f"click B/L link error: {e}")
 
@@ -579,6 +624,7 @@ def scrape(config: dict) -> dict:
                             log(f"force goto redirect page: {forced_url}")
                             last_page.goto(forced_url, wait_until="domcontentloaded", timeout=20000)
                             log("force goto redirect success")
+                            snap(last_page, "after_force_redirect_v2")
 
                             # 直接进入真实页面（绕过redirect）
                             real_detail_url = (
@@ -588,14 +634,10 @@ def scrape(config: dict) -> dict:
                             log(f"manual goto REAL detail page: {real_detail_url}")
                             last_page.goto(real_detail_url, wait_until="domcontentloaded", timeout=25000)
                             log("navigated to REAL detail page successfully")
+                            snap(last_page, "after_force_real_detail_v2")
 
                             # 🔍 调试截图
-                            try:
-                                screenshot_path = os.path.join(debug_dir, "wanhai_after_real_detail.png")
-                                last_page.screenshot(path=screenshot_path, full_page=True)
-                                log(f"saved screenshot of REAL detail page -> {screenshot_path}")
-                            except Exception as e:
-                                log(f"screenshot after REAL detail failed: {e}")
+                            # 禁用早期截图：wanhai_after_real_detail.png
 
                         except Exception as e:
                             log(f"force goto REAL detail page failed: {e}")
@@ -608,10 +650,7 @@ def scrape(config: dict) -> dict:
                             pass
 
                     # Step 5️⃣: 调试截图
-                    try:
-                        last_page.screenshot(path=os.path.join(debug_dir, "wanhai_after_open_detail.png"))
-                    except Exception:
-                        pass
+                    # 保留 after_open_detail 的多页面快照，由 snap_all_pages 统一生成
 
             except Exception as e:
                 log(f"list B/L open section failed: {e}")
@@ -667,12 +706,7 @@ def scrape(config: dict) -> dict:
                             log(f"fallback: manually goto REAL detail page: {real_detail_url}")
                             last_page.goto(real_detail_url, wait_until="domcontentloaded", timeout=25000)
                             log("fallback: navigated to REAL detail page successfully")
-                            try:
-                                screenshot_path = os.path.join(debug_dir, "wanhai_after_real_detail_fallback.png")
-                                last_page.screenshot(path=screenshot_path, full_page=True)
-                                log(f"fallback: saved screenshot of REAL detail page -> {screenshot_path}")
-                            except Exception as e:
-                                log(f"fallback: screenshot after REAL detail failed: {e}")
+                            # 禁用早期截图：wanhai_after_real_detail_fallback.png
                         except Exception as e:
                             log(f"fallback: manual goto REAL detail failed: {e}")
             except Exception as e:
@@ -855,10 +889,7 @@ def scrape(config: dict) -> dict:
                         last_page.wait_for_load_state("domcontentloaded", timeout=15000)
                     except Exception:
                         pass
-                    try:
-                        last_page.screenshot(path=os.path.join(debug_dir, "wanhai_after_query_submit.png"))
-                    except Exception:
-                        pass
+                    # 禁用早期截图：wanhai_after_query_submit.png
                 else:
                     log("query-form submit failed; fallback to force_open_detail()")
                     ok_force = force_open_detail(last_page, str(search_number), ref_type_detected)
@@ -882,15 +913,48 @@ def scrape(config: dict) -> dict:
                         last_page.wait_for_load_state("domcontentloaded", timeout=15000)
                     except Exception:
                         pass
-                    try:
-                        last_page.screenshot(path=os.path.join(debug_dir, "wanhai_after_force_detail.png"))
-                    except Exception:
-                        pass
+                    # 禁用早期截图：wanhai_after_force_detail.png
+                    # 禁用早期截图：wanhai_after_force_detail.png
 
                         # ---- 通过 tracking_query.xhtml 表单提交打开详情（避免WAF/JSF校验）----
             
             # 在最终页面等待结果并提取（轮询，兼容 JSF 局部更新 / frames / XHTML 命名空间）
             log("waiting result on final page ...")
+            # 截取所有页面，并对以 __3 结尾的那张做 OCR 提取文字
+            taken = []
+            try:
+                for idx, pg in enumerate(context.pages):
+                    try:
+                        url_ok = getattr(pg, "url", None)
+                        if url_ok and url_ok != "about:blank":
+                            p = snap(pg, f"all_after_open_detail__{idx}")
+                            if p:
+                                taken.append((idx, p))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            # 选择 idx==3 的图片（若存在），否则选择最后一张
+            target_path = None
+            for idx, p in taken:
+                if idx == 3:
+                    target_path = p
+                    break
+            if target_path is None and taken:
+                target_path = taken[-1][1]
+            # OCR 提取
+            if target_path:
+                try:
+                    import pytesseract
+                    from PIL import Image
+                    img = Image.open(target_path)
+                    text = pytesseract.image_to_string(img, lang="eng")
+                    txt_path = os.path.join(debug_dir, "wanhai_ocr_detail.txt")
+                    with open(txt_path, "w", encoding="utf-8") as f:
+                        f.write(text)
+                    log(f"OCR extracted to: {txt_path}")
+                except Exception as e:
+                    log(f"OCR failed: {e}")
                         # 在最终页面等待结果并提取（轮询，兼容 JSF 局部更新 / frames / XHTML 命名空间）
            
 
@@ -1072,6 +1136,11 @@ def scrape(config: dict) -> dict:
                     log("saved wanhai_final_page.html for debug; ETA not found within polling window")
                 except Exception:
                     pass
+                # 额外保存最终页面截图
+                try:
+                    last_page.screenshot(path=os.path.join(debug_dir, "wanhai_final_page.png"), full_page=True)
+                except Exception:
+                    pass
                 return {"status": "timeout", "error": "ETA not found (no visible label or JSF fragment not rendered)"}
 
             before_norm = eta_text
@@ -1090,6 +1159,11 @@ def scrape(config: dict) -> dict:
             with open(out_file, "w", encoding="utf-8") as f:
                 json.dump({"timestamp": datetime.now().isoformat(), **out_obj}, f, ensure_ascii=False, indent=2)
             log(f"written debug: {out_file}")
+            # 额外保存最终页面截图
+            try:
+                last_page.screenshot(path=os.path.join(debug_dir, "wanhai_final_page.png"), full_page=True)
+            except Exception:
+                pass
             return out_obj
         except PlaywrightTimeoutError as e:
             try:
