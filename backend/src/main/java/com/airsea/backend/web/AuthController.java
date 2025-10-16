@@ -30,6 +30,7 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@RequestBody SignupRequest req) {
+        System.out.println("[signup] request: " + req);
         String uname = req.username().trim();
         if (userRepository.findByUsername(uname).isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("detail", "Username already registered"));
